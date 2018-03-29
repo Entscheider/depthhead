@@ -1,0 +1,108 @@
+use super::houghforest;
+use forest::randforest::RandomForest;
+use image::{ImageBuffer, Luma, SubImage, GenericImage};
+use imageproc::filter::gaussian_blur_f32;
+
+type DepthImage = ImageBuffer<Luma<u16>, Vec<u16>>;
+type HoughForest<'a> = RandomForest<houghforest::LeafParam,
+                                    houghforest::HoughTreeFunctions<InMutSubImage<'a>>>;
+
+pub struct InMutSubImage<'a> {
+    subrect: houghforest::Rect,
+    img: &'a DepthImage,
+}
+
+impl<'a> InMutSubImage<'a> {
+    fn new(x: u32, y: u32, w: u32, h: u32, img: &'a DepthImage) -> InMutSubImage<'a> {
+        InMutSubImage {
+            subrect: houghforest::Rect::new(x, y, w, h),
+            img: img,
+        }
+    }
+}
+
+impl<'a> houghforest::HoughForestImage for InMutSubImage<'a> {
+    fn average_value_in_rect(&self, rect: houghforest::Rect) -> f64 {
+        let mut sum = 0u64;
+        let mut count = 0u64;
+        for y in (rect.y() + self.subrect.y())..(self.subrect.y() + rect.height()) {
+            for x in (rect.x() + self.subrect.x())..(self.subrect.x() + rect.width()) {
+                sum += self.img[(x, y)].data[0] as u64;
+                count += 1;
+            }
+        }
+        (sum as f64) / (count as f64)
+    }
+}
+
+// I (Tiefenbild, Head-Boundingbox, Rotation)
+use std::iter::Iterator;
+fn learn_hough_forest<'a, 'b, I: Iterator<Item=(&'b DepthImage, houghforest::Rect, [f64;3])>>(
+    param: houghforest::HoughForestParameter<InMutSubImage<'a>>,
+    picture: I
+    ) 
+-> Option<HoughForest<'a>>{
+    None
+}
+
+struct PredictParam {
+    stepwidth: u32,
+    subimage_width: u32,
+    subimage_height: u32,
+    gaussian_sigma: f32,
+}
+
+impl PredictParam {
+    fn build_hough_image<'a>(self,
+                             forest: &'a HoughForest<'a>,
+                             img: &'a DepthImage)
+                             -> ImageBuffer<Luma<u16>, Vec<u16>> {
+
+        let (h, w) = (img.height(), img.width());
+        let mut hough_img: ImageBuffer<Luma<u16>, Vec<u16>> = ImageBuffer::new(w, h);
+        let left_w = self.subimage_width / 2;
+        let right_w = self.subimage_width - left_w;
+        let left_h = self.subimage_height / 2;
+        let right_h = self.subimage_height - left_h;
+        let mut x = self.subimage_width / 2;
+        let mut y = self.subimage_height / 2;
+        while y < h - right_h {
+            while x < w - right_w {
+                let leafs = {
+                    let subimg = InMutSubImage::new(x - left_w,
+                                                    y - left_h,
+                                                    self.subimage_width,
+                                                    self.subimage_height,
+                                                    img);
+                    forest.forest_predictions(&subimg)
+                };
+                for leaf in leafs.iter() {
+                    if leaf.prob >= 0.95 {
+                        for offs in leaf.offsets.iter() {
+                            let nx = (x as i64) + (offs[0] as i64);
+                            if nx < 0 {
+                                continue;
+                            }
+                            let nx = nx as u32;
+                            if nx >= self.subimage_width {
+                                continue;
+                            }
+                            let ny = (y as i64) + (offs[1] as i64);
+                            if ny < 0 {
+                                continue;
+                            }
+                            let ny = ny as u32;
+                            if ny >= self.subimage_width {
+                                continue;
+                            }
+                            hough_img[(x, y)].data[0] += 1;
+                        }
+                    }
+                }
+                x += self.subimage_width;
+            }
+            y += self.subimage_height;
+        }
+        gaussian_blur_f32(&hough_img, self.gaussian_sigma)
+    }
+}

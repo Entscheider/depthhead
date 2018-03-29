@@ -1,0 +1,283 @@
+<html>
+<head>
+ <script src="plotly-latest.min.js"></script>
+ <script src="vue.min.js"></script>
+ <link rel="stylesheet" href="milligram.min.css">
+
+ <style type="text/css" media="screen">
+  h2{
+    text-align: center
+  }
+  .plot{
+    background-color: black;
+    height: 500px;
+  }
+</style>
+</head>
+<body>
+
+  <div id="app">
+    <ul>
+      <li>Used Persons: {{evaluation.persons}}</li>
+      <li> Learned Forest: "{{evaluation.trained_tree_path}}"</li>
+    </ul>
+
+    <div id="overall">
+      <h2> Overall Result </h2>
+      Mean-Square-Error Rotation: {{rot_mse}},
+      Mean-Square-Error Midpoint: {{midp_mse}},
+    </div>
+    <div class="container">
+       <div>
+         <plot :data=midpointaccuracy title="Distance-Accuracy"></plot>
+         <plot :data=rotationaccuracy title="Rotation-Accuracy"></plot>
+        <div class="row">
+         <div class="column"><plot :data=xacc title="X-Accuracy"></plot></div>
+         <div class="column"><plot :data=yacc title="Y-Accuracy"></plot></div>
+         <div class="column"><plot :data=zacc title="Z-Accuracy"></plot></div>
+        </div>        
+        <div class="row">
+         <div class="column"><plot :data=rxacc title="Pitch-Accuracy"></plot></div>
+         <div class="column"><plot :data=ryacc title="Yaw-Accuracy"></plot></div>
+         <div class="column"><plot :data=rzacc title="Roll-Accuracy"></plot></div>
+        </div>
+       </div>
+           <div v-for="entry in evaluation.res">
+        <h2> Person {{ entry[0] }} </h2>
+        <!-- Mittelpunkt pro Komponente -->
+        <div class="row">
+          <div v-for="idx in [0,1,2]" class="column">
+            <plot :data=[toData(entry[1]["guess_midpoint"],idx,'guess'),toData(entry[1]["truth_midpoint"],idx,"truth")] :title=["x","y","z"][idx] >
+            </plot> 
+          </div>
+        </div>
+        <!-- Rotation pro Komponente -->
+        <div class="row">
+          <div v-for="idx in [0,1,2]" class="column">
+            <plot :data=[toData(entry[1]["guess_rot"],idx,'guess'),toData(entry[1]["truth_rot"],idx,"truth")] :title=["Pitch","Yaw","Roll"][idx] >
+            </plot> 
+          </div>
+        </div>
+        <!-- Distanz-Abstand -->
+        <plot :data=[compDistance(entry[1]["guess_midpoint"],entry[1]["truth_midpoint"],"Midpoint-Distance"),compMeanLine(entry[1]["guess_midpoint"],entry[1]["truth_midpoint"],"Mean")] title="Distance">
+        </plot>
+        <!-- Distanz-Rotation -->
+        <plot :data=[compDistance(entry[1]["guess_rot"],entry[1]["truth_rot"],"Rotation-Distance"),compMeanLine(entry[1]["guess_rot"],entry[1]["truth_rot"],"Mean")] title="Distance">
+      </div>
+     </div>
+    </div>
+  </div>
+
+  <script>
+    var jsonfilename = "evaluation.json"
+    var getjson = function(url, callback){
+      var xhr = new XMLHttpRequest();
+      xhr.open("get", url, true);
+      xhr.responseType = "json";
+      xhr.onload = function(){
+        callback(xhr.response)
+      };
+      xhr.send();
+    }
+    function compAccuracy(distances, threshold){
+      var res = 0;
+      for (var i = 0; i < distances.length; i++) {
+        if (distances[i] <= threshold){
+          res += 1;
+        }
+      }
+      return res / distances.length;
+    }
+    Vue.component("plot",Vue.extend({
+      props: {
+        title: {
+          type: String, default: "Unnamed"
+        },
+        data:{
+          type: Array,
+          default: function(){
+            return [{
+              x: [0,1],
+              y: [0,1],
+              name: "Data" 
+            }]
+          }
+        }
+      },
+      computed: {
+        layout: function(){
+         return {
+                title: this.title,
+                showlegend: true,
+                legend: {"orientation": "h"},
+                margin: {
+                  l: 30,
+                  r: 30,
+                  b: 100,
+                  t: 100,
+                  pad: 4
+                },
+              }          
+        }
+      },
+      template: "<div class='plot'></div>",
+    // data: function(){ return {}},
+    mounted: function(){
+      var element = this.$el;
+      Plotly.newPlot(element,this.data,this.layout);
+    },
+    methods: {},
+    watch: {
+      data: function(val){
+        var element = this.$el;
+        var layout = this.layout;
+        if (Array.isArray(val) && Array.isArray(val[0])){
+          layout = Object.assign(layout, val[1]);
+          val = val[0];
+        }
+        console.log(layout);
+        Plotly.newPlot(element,val,layout);
+      }
+    }
+  }))
+    var app = new Vue({
+      el: '#app',
+      data: {
+        evaluation: {
+          persons: [2,3,1],
+          trained_tree_path: "bla",
+          res: []
+        },
+        midpointaccuracy: [{x: [0,1],y:[0,1]}],
+        rotationaccuracy: [{x: [0,1],y:[0,1]}],
+        xacc: [{x: [0,1],y:[0,1]}],
+        yacc: [{x: [0,1],y:[0,1]}],
+        zacc: [{x: [0,1],y:[0,1]}],
+        rxacc: [{x: [0,1],y:[0,1]}],
+        ryacc: [{x: [0,1],y:[0,1]}],
+        rzacc: [{x: [0,1],y:[0,1]}],
+        midp_mse: 0, rot_mse: 0
+      },
+      created: function() { this.fetchData() },
+      methods: {
+        fetchData: function(){
+          var self = this;
+          getjson(jsonfilename, function(data){
+            self.evaluation = data
+          });
+        },
+        toData: function(data, idx ,name){ 
+          var ydata = data.map(function(x){return x[idx]})
+          return {
+            y: ydata,
+            name: name
+          }
+        },
+        compDistance: function(guess,truth, name){
+          var res = [];
+          for(var i=0; i< guess.length;i++){
+            var diff = 0;
+            for (var j=0; j< 3 ; j++){
+              d = guess[i][j]-truth[i][j] ;
+              diff = diff + d*d;
+            }
+            res.push(Math.sqrt(diff));
+          }
+          return {y: res, name: name}
+        },
+        compMeanLine: function(guess,truth,name){
+          var dist = this.compDistance(guess,truth,"").y;
+          var mean = 0;
+          var variance = 0;
+          for (var i=0; i < dist.length;  i++) {
+            mean += dist[i];
+            //variance += dist[i]*dist[i];
+          }
+          mean = mean / dist.length;
+          //variance = variance / dist.length;
+          //variance = Math.sqrt(mean*mean - variance);
+          return {y: [mean,mean], x: [0, dist.length], name: name}
+        },
+        allDistances: function(data, source="midpoint"){
+          var persons = data["res"];
+          var distances = [];
+          for (var i = 0; i < persons.length; i++) {
+            var person = persons[i][1];
+            var guess = person["guess_"+source];
+            var truth = person["truth_"+source];
+            distances = distances.concat(this.compDistance(guess,truth,"")["y"]);
+          }
+          return distances;
+        },
+        coordDistance: function(data, source="midpoint", idx=0){
+          var persons = data["res"];
+          var distances = [];
+          for (var i = 0; i < persons.length; i++) {
+            var person = persons[i][1];
+            var guess = person["guess_"+source];
+            var truth = person["truth_"+source];
+            for(var j=0; j < guess.length; j++){
+              distances.push(Math.abs(guess[j][idx]-truth[j][idx]));
+            }
+          }
+          return distances;
+        },
+        plotAccuracy: function(thresholds,distances, name=""){
+          if (distances.length == 0){
+            return {x: [1,1], y:[2,2], name: name};
+          }
+          var accuracies = [];
+          for (var t = 0; t < thresholds.length; t++) {
+            var th = thresholds[t];
+            accuracies.push(compAccuracy(distances, th));
+          }
+          return [[{x: thresholds, y: accuracies, name: name }],{xaxis:{title: "Threshold"}, yaxis: {title: "Accuracy"}}]
+        },
+        meansqareerror: function(data, source="midpoint"){
+          var persons = data["res"];
+          var res = 0;
+          var len = 0;
+          for (var p = 0; p < persons.length; p++) {
+            var guess = persons[p][1]["guess_"+source];
+            var truth = persons[p][1]["truth_"+source];
+            len += truth.length;
+            for (var i = 0; i < truth.length; i++) {
+              for (var j=0; j< 3; j++){
+                var toadd = truth[i][j]-guess[i][j];
+                res += toadd*toadd;
+              }
+            }
+          }
+          return res / 3 / len;
+        }
+      },
+      watch: {
+        evaluation: function(val){
+          var thresholds = [];
+          for (var i = 0; i < 20; i++) {
+            thresholds.push(i*5);
+          }
+          var dist_midp = this.allDistances(val,"midpoint");
+          var dist_rot = this.allDistances(val,"rot");
+          var dist_x = this.coordDistance(val,"midpoint",0);
+          var dist_y = this.coordDistance(val,"midpoint",1);
+          var dist_z = this.coordDistance(val,"midpoint",2);
+          var dist_rx = this.coordDistance(val,"rot",0);
+          var dist_ry = this.coordDistance(val,"rot",1);
+          var dist_rz = this.coordDistance(val,"rot",2);
+          this.midpointaccuracy = this.plotAccuracy(thresholds,dist_midp,"midpoint-accuracy");
+          this.xacc = this.plotAccuracy(thresholds,dist_x,"x-accuracy");
+          this.yacc = this.plotAccuracy(thresholds,dist_y,"y-accuracy");
+          this.zacc = this.plotAccuracy(thresholds,dist_z,"z-accuracy");
+          this.rxacc = this.plotAccuracy(thresholds,dist_rx,"x-accuracy");
+          this.ryacc = this.plotAccuracy(thresholds,dist_ry,"y-accuracy");
+          this.rzacc = this.plotAccuracy(thresholds,dist_rz,"z-accuracy");
+          this.rotationaccuracy = this.plotAccuracy(thresholds,dist_rot,"rotation-accuracy");
+          this.midp_mse = this.meansqareerror(val, "midpoint");
+          this.rot_mse = this.meansqareerror(val, "rot");
+        }
+      }
+    })
+  </script>
+</body>
+</html>
