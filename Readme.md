@@ -2,9 +2,9 @@
 
 This repo implements the depth based head pose regression described in the paper 
 "Multiview Facial Landmark Localization in RGB-D
-Images via Hierarchical Regression With Binary Patterns" from Zhang et al (see [here](https://zhzhanp.github.io/) for the website).
-A hough forest is implemented for that (see "Class-specific Hough forests for object detection" from J. Gall und V. Lempitsky).
-The code is written in rust and uses [stamm](https://github.com/Entscheider/stamm) for implementing the forest.
+Images via Hierarchical Regression With Binary Patterns" by Zhang et al. (see [here](https://zhzhanp.github.io/) for the website).
+A hough forest is implemented for that (see "Class-specific Hough forests for object detection" by J. Gall und V. Lempitsky).
+The code is written in Rust and uses [Stamm](https://github.com/Entscheider/stamm) for implementing the forest.
 
 Note: Only head pose regression using a hough forest is implemented. The facial landmark localization as well as the pose regression using a GBDT are missing.
 
@@ -14,7 +14,7 @@ Note: Only head pose regression using a hough forest is implemented. The facial 
 
 # Training
 
-To run the example applications you can use the pretrained forest (the the releases).
+To run the example applications you can use the pretrained forest (see the release tab).
 You can also train your own. To do that, first of all training data are necessary.
 You can download these files from [the biwi database](https://data.vision.ee.ethz.ch/cvl/gfanelli/head_pose/head_forest.html).
 More precisely, the following must be downloaded:
@@ -60,13 +60,13 @@ cargo run --example name_of_the_example --release
 where `name_of_the_example` is one of the following:
 
 * biwiread: Example which shows the data of the biwi database
-* db_evaluate: Example which evaluate a trained forest with test data
+* db_evaluate: Example which evaluates a trained forest with test data
 * db_prediction: Use a trained forest and test it against the biwi database.
 * hough_tree_trainer: Train a forest using the biwi database
 * live_prediction: Use a trained forest for a live demonstration. (Requires a kinect)
 * show_hough: Show a hough forest result using a single depth image.
 
-Note: You want to use the `--release` flag because the perfomance is horrible otherwise.
+Note: You want to use the `--release` flag because the performance is horrible otherwise.
 You may also want to add `--features reduce_bound_check` to reduce the bound checks for images.
 
 # Trained Forest
@@ -76,7 +76,7 @@ A trained forest can be found in the release tab of this repo.
 # Code example
 
 Here is a small example for using a trained hough forest.
-You should use serde and serde_json for loading.
+You should use serde and serde_json if you want to load the pretrained model.
 
 ```rust
 // First read the trained forest
